@@ -4,7 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <title>Antrenman Takibi</title>
+  <title>Antrenman & Analiz Takibi</title>
+  <!-- Chart.js Kütüphanesi -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     :root {
       --bg: #0f172a;
@@ -31,6 +33,35 @@
       margin-bottom: 12px;
       min-height: 16px;
     }
+
+    /* Üst Sekmeler (Tab Menü) */
+    .tab-nav {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 16px;
+      background: var(--card-bg);
+      padding: 4px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+    }
+    .tab-btn {
+      padding: 8px;
+      background: transparent;
+      border: none;
+      color: var(--muted);
+      font-weight: 600;
+      font-size: 0.9rem;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: 0.2s;
+    }
+    .tab-btn.active {
+      background: #334155;
+      color: var(--text);
+    }
+
+    /* İstatistik ve Takvim Kartı */
     .header {
       display: flex;
       justify-content: space-between;
@@ -56,12 +87,13 @@
     }
     .stats-grid {
       display: grid;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: repeat(3, 1fr);
       gap: 8px;
       margin-top: 8px;
     }
-    .stat-item { background: rgba(255,255,255,0.03); padding: 8px; border-radius: 8px; }
-    .stat-val { font-size: 1.1rem; font-weight: bold; margin-top: 2px; }
+    .stat-item { background: rgba(255,255,255,0.03); padding: 8px; border-radius: 8px; text-align: center; }
+    .stat-val { font-size: 1.05rem; font-weight: bold; margin-top: 2px; }
+    
     .calendar {
       background: var(--card-bg);
       border: 1px solid var(--border);
@@ -98,6 +130,7 @@
     .dot-B { background: var(--accent-b); }
     .dot-C { background: var(--accent-c); }
 
+    /* Modal */
     .modal-overlay {
       display: none;
       position: fixed;
@@ -167,38 +200,121 @@
       font-size: 1rem;
       margin-top: 12px;
     }
+
+    /* Analiz Bölümü */
+    .filter-group {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    select {
+      width: 100%;
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 10px;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      outline: none;
+    }
+    .chart-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px;
+      min-height: 280px;
+    }
   </style>
 </head>
 <body>
 
   <div class="sync-status" id="syncStatus">Bulut bağlantısı bekleniyor...</div>
 
-  <div class="stats-card">
-    <div style="font-weight: bold;">Haftalık İstatistik</div>
-    <div class="stats-grid">
-      <div class="stat-item">
-        <div style="color:var(--muted);">Bu Hafta Toplam</div>
-        <div class="stat-val" id="thisWeekReps">0 tekrar</div>
+  <!-- Sekmeler -->
+  <div class="tab-nav">
+    <button class="tab-btn active" onclick="switchView('calendarView')">📅 Takvim</button>
+    <button class="tab-btn" onclick="switchView('analyticsView')">📊 Analiz & Trend</button>
+  </div>
+
+  <!-- 1. GÖRÜNÜM: TAKVİM -->
+  <div id="calendarView">
+    <div class="stats-card">
+      <div style="font-weight: bold;">Haftalık İstatistik</div>
+      <div class="stats-grid" style="grid-template-columns: 1fr 1fr;">
+        <div class="stat-item">
+          <div style="color:var(--muted);">Bu Hafta Toplam</div>
+          <div class="stat-val" id="thisWeekReps">0 tekrar</div>
+        </div>
+        <div class="stat-item">
+          <div style="color:var(--muted);">Geçen Haftaya Göre</div>
+          <div class="stat-val" id="weekTrend">0%</div>
+        </div>
       </div>
-      <div class="stat-item">
-        <div style="color:var(--muted);">Geçen Haftaya Göre</div>
-        <div class="stat-val" id="weekTrend">0%</div>
+    </div>
+
+    <div class="calendar">
+      <div class="header">
+        <button class="btn-nav" onclick="changeMonth(-1)">&lt;</button>
+        <h1 id="monthYearTitle"></h1>
+        <button class="btn-nav" onclick="changeMonth(1)">&gt;</button>
       </div>
+      <div class="weekdays">
+        <div>Pzt</div><div>Sal</div><div>Çar</div><div>Per</div><div>Cum</div><div>Cmt</div><div>Paz</div>
+      </div>
+      <div class="days" id="calendarDays"></div>
     </div>
   </div>
 
-  <div class="calendar">
-    <div class="header">
-      <button class="btn-nav" onclick="changeMonth(-1)">&lt;</button>
-      <h1 id="monthYearTitle"></h1>
-      <button class="btn-nav" onclick="changeMonth(1)">&gt;</button>
+  <!-- 2. GÖRÜNÜM: ANALİZ & GRAFİKLER -->
+  <div id="analyticsView" style="display: none;">
+    <div class="filter-group">
+      <div>
+        <label style="font-size: 0.75rem; color: var(--muted); margin-bottom: 4px; display:block;">Hareket / Tür</label>
+        <select id="exerciseSelect" onchange="updateAnalyticsChart()">
+          <option value="sinav">Şınav (Plan A)</option>
+          <option value="mekik">Mekik (Plan A)</option>
+          <option value="barfiks">Barfiks (Plan B)</option>
+          <option value="squat">Squat (Plan B)</option>
+          <option value="rest">Dinlenme (Plan C)</option>
+        </select>
+      </div>
+      <div>
+        <label style="font-size: 0.75rem; color: var(--muted); margin-bottom: 4px; display:block;">Zaman Aralığı</label>
+        <select id="periodSelect" onchange="updateAnalyticsChart()">
+          <option value="7">Haftalık (Son 7 Gün)</option>
+          <option value="14">2 Haftalık (Son 14 Gün)</option>
+          <option value="30" selected>Aylık (Son 30 Gün)</option>
+          <option value="90">3 Aylık (Son 90 Gün)</option>
+          <option value="180">6 Aylık (Son 180 Gün)</option>
+          <option value="365">Yıllık (Son 365 Gün)</option>
+        </select>
+      </div>
     </div>
-    <div class="weekdays">
-      <div>Pzt</div><div>Sal</div><div>Çar</div><div>Per</div><div>Cum</div><div>Cmt</div><div>Paz</div>
+
+    <div class="stats-card">
+      <div class="stats-grid">
+        <div class="stat-item">
+          <div style="color:var(--muted); font-size: 0.75rem;">Toplam</div>
+          <div class="stat-val" id="chartTotal">-</div>
+        </div>
+        <div class="stat-item">
+          <div style="color:var(--muted); font-size: 0.75rem;">Ortalama/Gün</div>
+          <div class="stat-val" id="chartAvg">-</div>
+        </div>
+        <div class="stat-item">
+          <div style="color:var(--muted); font-size: 0.75rem;">En İyi Gün</div>
+          <div class="stat-val" id="chartMax">-</div>
+        </div>
+      </div>
     </div>
-    <div class="days" id="calendarDays"></div>
+
+    <div class="chart-card">
+      <canvas id="trendChart"></canvas>
+    </div>
   </div>
 
+  <!-- MODAL -->
   <div class="modal-overlay" id="overlay" onclick="closeModal()"></div>
   <div class="modal" id="modal" style="display: none;">
     <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -242,14 +358,13 @@
   </div>
 
   <script>
-    // -----------------------------------------------------------------
-    // GOOGLE APPS SCRIPT URL'NİZİ AŞAĞIYA YAPIŞTIRIN:
+    // GOOGLE APPS SCRIPT URL
     const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwgQOTmPVzN7F8fBqFISJlQs4FwrRjx7bFmJFS-yjglPUs69b-metMW7WeYGcRKxqOBHg/exec";
-    // -----------------------------------------------------------------
 
     let currentDate = new Date();
     let selectedDateKey = null;
     let currentPlan = 'A';
+    let chartInstance = null;
     const DB_KEY = 'workout_tracker_data';
 
     function setStatus(text) {
@@ -262,6 +377,19 @@
 
     function saveStorage(data) {
       localStorage.setItem(DB_KEY, JSON.stringify(data));
+    }
+
+    function switchView(viewId) {
+      document.getElementById('calendarView').style.display = (viewId === 'calendarView') ? 'block' : 'none';
+      document.getElementById('analyticsView').style.display = (viewId === 'analyticsView') ? 'block' : 'none';
+      
+      const buttons = document.querySelectorAll('.tab-btn');
+      buttons[0].classList.toggle('active', viewId === 'calendarView');
+      buttons[1].classList.toggle('active', viewId === 'analyticsView');
+
+      if (viewId === 'analyticsView') {
+        updateAnalyticsChart();
+      }
     }
 
     function renderCalendar() {
@@ -379,8 +507,10 @@
       saveStorage(storage);
       closeModal();
       renderCalendar();
+      if (document.getElementById('analyticsView').style.display === 'block') {
+        updateAnalyticsChart();
+      }
 
-      // Google E-Tabloya Arka Planda Gönder
       if (SCRIPT_URL && !SCRIPT_URL.includes("BURAYA_GOOGLE")) {
         setStatus("Buluta kaydediliyor...");
         fetch(SCRIPT_URL, {
@@ -430,10 +560,112 @@
       }
     }
 
-    // Açılışta Google E-Tablodan Verileri Çek
+    // ANALİZ & GRAFİK HESAPLAMA MOTORU
+    function updateAnalyticsChart() {
+      const exercise = document.getElementById('exerciseSelect').value;
+      const periodDays = parseInt(document.getElementById('periodSelect').value, 10);
+      const storage = getStorage();
+
+      const labels = [];
+      const dataPoints = [];
+      const today = new Date();
+
+      let totalVal = 0;
+      let maxVal = 0;
+      let activeDaysCount = 0;
+
+      for (let i = periodDays - 1; i >= 0; i--) {
+        const d = new Date(today);
+        d.setDate(today.getDate() - i);
+        
+        const yyyy = d.getFullYear();
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const dd = String(d.getDate()).padStart(2, '0');
+        const key = `${yyyy}-${mm}-${dd}`;
+        
+        // Etiket formatı (gün.ay)
+        labels.push(`${dd}.${mm}`);
+
+        let val = 0;
+        const entry = storage[key];
+
+        if (entry) {
+          if (exercise === 'sinav' && entry.plan === 'A') {
+            val = (entry.ex1 || []).reduce((a, b) => a + b, 0);
+          } else if (exercise === 'mekik' && entry.plan === 'A') {
+            val = (entry.ex2 || []).reduce((a, b) => a + b, 0);
+          } else if (exercise === 'barfiks' && entry.plan === 'B') {
+            val = (entry.ex1 || []).reduce((a, b) => a + b, 0);
+          } else if (exercise === 'squat' && entry.plan === 'B') {
+            val = (entry.ex2 || []).reduce((a, b) => a + b, 0);
+          } else if (exercise === 'rest' && entry.plan === 'C') {
+            val = 1; // Dinlenme günü olarak 1 sayılır
+          }
+        }
+
+        dataPoints.push(val);
+        totalVal += val;
+        if (val > maxVal) maxVal = val;
+        if (val > 0) activeDaysCount++;
+      }
+
+      // Özet Kartlarını Güncelle
+      const isRest = (exercise === 'rest');
+      document.getElementById('chartTotal').innerText = isRest ? `${totalVal} Gün` : `${totalVal} Tkr`;
+      document.getElementById('chartAvg').innerText = (totalVal / periodDays).toFixed(1);
+      document.getElementById('chartMax').innerText = isRest ? `${activeDaysCount} Gün` : `${maxVal} Tkr`;
+
+      // Grafik Renkleri
+      let themeColor = '#10b981';
+      if (exercise === 'barfiks' || exercise === 'squat') themeColor = '#3b82f6';
+      if (exercise === 'rest') themeColor = '#f59e0b';
+
+      const ctx = document.getElementById('trendChart').getContext('2d');
+      if (chartInstance) {
+        chartInstance.destroy();
+      }
+
+      chartInstance = new Chart(ctx, {
+        type: isRest ? 'bar' : 'line',
+        data: {
+          labels: labels,
+          datasets: [{
+            label: isRest ? 'Dinlenme Günü' : 'Toplam Tekrar',
+            data: dataPoints,
+            borderColor: themeColor,
+            backgroundColor: isRest ? themeColor : 'rgba(16, 185, 129, 0.1)',
+            borderWidth: 2,
+            tension: 0.25,
+            fill: !isRest,
+            pointRadius: periodDays > 60 ? 0 : 3,
+            pointBackgroundColor: themeColor
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false }
+          },
+          scales: {
+            x: {
+              grid: { color: 'rgba(255, 255, 255, 0.05)' },
+              ticks: { color: '#94a3b8', maxTicksLimit: 7, font: { size: 10 } }
+            },
+            y: {
+              beginAtZero: true,
+              grid: { color: 'rgba(255, 255, 255, 0.08)' },
+              ticks: { color: '#94a3b8', font: { size: 10 } }
+            }
+          }
+        }
+      });
+    }
+
+    // Google Veri Eşitleme
     function syncFromCloud() {
       if (!SCRIPT_URL || SCRIPT_URL.includes("BURAYA_GOOGLE")) {
-        setStatus("Yerel modda çalışıyor (Bağlantı girilmedi)");
+        setStatus("Yerel modda çalışıyor");
         return;
       }
       setStatus("Bulut verileri kontrol ediliyor...");
@@ -449,7 +681,7 @@
           }
         })
         .catch(() => {
-          setStatus("Çevrimdışı (Yerel kayıtlar gösteriliyor)");
+          setStatus("Çevrimdışı (Yerel kayıtlar)");
         });
     }
 
