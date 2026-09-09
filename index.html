@@ -299,11 +299,11 @@
           <div class="stat-val" id="chartTotal">-</div>
         </div>
         <div class="stat-item">
-          <div style="color:var(--muted); font-size: 0.75rem;">Ortalama/Gün</div>
+          <div style="color:var(--muted); font-size: 0.75rem;" id="chartAvgLabel">Ortalama / Antrenman</div>
           <div class="stat-val" id="chartAvg">-</div>
         </div>
         <div class="stat-item">
-          <div style="color:var(--muted); font-size: 0.75rem;">En İyi Gün</div>
+          <div style="color:var(--muted); font-size: 0.75rem;">En İyi Gün (Max)</div>
           <div class="stat-val" id="chartMax">-</div>
         </div>
       </div>
@@ -560,7 +560,7 @@
       }
     }
 
-    // ANALİZ & GRAFİK HESAPLAMA MOTORU
+    // ANALİZ & GRAFİK HESAPLAMA MOTORU (Sıfıra Düşme Düzeltildi)
     function updateAnalyticsChart() {
       const exercise = document.getElementById('exerciseSelect').value;
       const periodDays = parseInt(document.getElementById('periodSelect').value, 10);
@@ -572,7 +572,8 @@
 
       let totalVal = 0;
       let maxVal = 0;
-      let activeDaysCount = 0;
+      let sessionCount = 0;
+      const isRest = (exercise === 'rest');
 
       for (let i = periodDays - 1; i >= 0; i--) {
         const d = new Date(today);
@@ -582,38 +583,63 @@
         const mm = String(d.getMonth() + 1).padStart(2, '0');
         const dd = String(d.getDate()).padStart(2, '0');
         const key = `${yyyy}-${mm}-${dd}`;
-        
-        // Etiket formatı (gün.ay)
-        labels.push(`${dd}.${mm}`);
-
-        let val = 0;
         const entry = storage[key];
 
-        if (entry) {
+        if (isRest) {
+          // Dinlenme için tüm takvim günlerini tara (Bar grafik)
+          labels.push(`${dd}.${mm}`);
+          const isRestDay = (entry && entry.plan === 'C') ? 1 : 0;
+          dataPoints.push(isRestDay);
+          if (isRestDay) {
+            totalVal += 1;
+            sessionCount += 1;
+          }
+        } else {
+          // EGZERSİZLER İÇİN: Sadece o hareketin yapıldığı günleri grafiğe al (0'a düşmeyi engeller)
+          if (!entry) continue;
+
+          let val = 0;
+          let isRelevantPlan = false;
+
           if (exercise === 'sinav' && entry.plan === 'A') {
             val = (entry.ex1 || []).reduce((a, b) => a + b, 0);
+            isRelevantPlan = true;
           } else if (exercise === 'mekik' && entry.plan === 'A') {
             val = (entry.ex2 || []).reduce((a, b) => a + b, 0);
+            isRelevantPlan = true;
           } else if (exercise === 'barfiks' && entry.plan === 'B') {
             val = (entry.ex1 || []).reduce((a, b) => a + b, 0);
+            isRelevantPlan = true;
           } else if (exercise === 'squat' && entry.plan === 'B') {
             val = (entry.ex2 || []).reduce((a, b) => a + b, 0);
-          } else if (exercise === 'rest' && entry.plan === 'C') {
-            val = 1; // Dinlenme günü olarak 1 sayılır
+            isRelevantPlan = true;
+          }
+
+          if (isRelevantPlan && val > 0) {
+            labels.push(`${dd}.${mm}`);
+            dataPoints.push(val);
+            totalVal += val;
+            sessionCount++;
+            if (val > maxVal) maxVal = val;
           }
         }
-
-        dataPoints.push(val);
-        totalVal += val;
-        if (val > maxVal) maxVal = val;
-        if (val > 0) activeDaysCount++;
       }
 
-      // Özet Kartlarını Güncelle
-      const isRest = (exercise === 'rest');
-      document.getElementById('chartTotal').innerText = isRest ? `${totalVal} Gün` : `${totalVal} Tkr`;
-      document.getElementById('chartAvg').innerText = (totalVal / periodDays).toFixed(1);
-      document.getElementById('chartMax').innerText = isRest ? `${activeDaysCount} Gün` : `${maxVal} Tkr`;
+      // İstatistik Kartlarını Güncelle
+      const avgLabel = document.getElementById('chartAvgLabel');
+      if (isRest) {
+        avgLabel.innerText = "Haftalık Ort. Dinlenme";
+        document.getElementById('chartTotal').innerText = `${totalVal} Gün`;
+        const weeks = Math.max(1, (periodDays / 7));
+        document.getElementById('chartAvg').innerText = `${(totalVal / weeks).toFixed(1)} Gün/Hf`;
+        document.getElementById('chartMax').innerText = `${totalVal} Gün`;
+      } else {
+        avgLabel.innerText = "Ortalama / Antrenman";
+        const avgPerSession = sessionCount > 0 ? (totalVal / sessionCount).toFixed(0) : 0;
+        document.getElementById('chartTotal').innerText = `${totalVal} Tkr`;
+        document.getElementById('chartAvg').innerText = `${avgPerSession} Tkr`;
+        document.getElementById('chartMax').innerText = `${maxVal} Tkr`;
+      }
 
       // Grafik Renkleri
       let themeColor = '#10b981';
@@ -628,16 +654,17 @@
       chartInstance = new Chart(ctx, {
         type: isRest ? 'bar' : 'line',
         data: {
-          labels: labels,
+          labels: labels.length > 0 ? labels : ['Kayıt Yok'],
           datasets: [{
             label: isRest ? 'Dinlenme Günü' : 'Toplam Tekrar',
-            data: dataPoints,
+            data: dataPoints.length > 0 ? dataPoints : [0],
             borderColor: themeColor,
-            backgroundColor: isRest ? themeColor : 'rgba(16, 185, 129, 0.1)',
-            borderWidth: 2,
-            tension: 0.25,
+            backgroundColor: isRest ? themeColor : 'rgba(16, 185, 129, 0.12)',
+            borderWidth: 2.5,
+            tension: 0.3,
             fill: !isRest,
-            pointRadius: periodDays > 60 ? 0 : 3,
+            pointRadius: 4,
+            pointHoverRadius: 6,
             pointBackgroundColor: themeColor
           }]
         },
@@ -645,15 +672,22 @@
           responsive: true,
           maintainAspectRatio: false,
           plugins: {
-            legend: { display: false }
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: function(context) {
+                  return isRest ? 'Dinlenme' : `${context.parsed.y} Tekrar`;
+                }
+              }
+            }
           },
           scales: {
             x: {
               grid: { color: 'rgba(255, 255, 255, 0.05)' },
-              ticks: { color: '#94a3b8', maxTicksLimit: 7, font: { size: 10 } }
+              ticks: { color: '#94a3b8', font: { size: 11 } }
             },
             y: {
-              beginAtZero: true,
+              beginAtZero: false,
               grid: { color: 'rgba(255, 255, 255, 0.08)' },
               ticks: { color: '#94a3b8', font: { size: 10 } }
             }
