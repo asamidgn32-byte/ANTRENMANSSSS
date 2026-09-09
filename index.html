@@ -4,7 +4,6 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <title>Antrenman Takibi</title>
   <style>
     :root {
@@ -24,6 +23,13 @@
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       background: var(--bg);
       color: var(--text);
+    }
+    .sync-status {
+      text-align: center;
+      font-size: 0.75rem;
+      color: var(--muted);
+      margin-bottom: 12px;
+      min-height: 16px;
     }
     .header {
       display: flex;
@@ -92,7 +98,6 @@
     .dot-B { background: var(--accent-b); }
     .dot-C { background: var(--accent-c); }
 
-    /* Modal / Bottom Sheet */
     .modal-overlay {
       display: none;
       position: fixed;
@@ -149,7 +154,7 @@
       border: 1px solid var(--border);
       color: var(--text);
       border-radius: 8px;
-      font-size: 16px; /* Prevents auto-zoom in Safari iOS */
+      font-size: 16px;
     }
     .btn-submit {
       width: 100%;
@@ -166,6 +171,8 @@
 </head>
 <body>
 
+  <div class="sync-status" id="syncStatus">Bulut bağlantısı bekleniyor...</div>
+
   <div class="stats-card">
     <div style="font-weight: bold;">Haftalık İstatistik</div>
     <div class="stats-grid">
@@ -175,7 +182,7 @@
       </div>
       <div class="stat-item">
         <div style="color:var(--muted);">Geçen Haftaya Göre</div>
-        <div class="stat-val" id="weekTrend">-%0</div>
+        <div class="stat-val" id="weekTrend">0%</div>
       </div>
     </div>
   </div>
@@ -192,7 +199,6 @@
     <div class="days" id="calendarDays"></div>
   </div>
 
-  <!-- Kayıt Modalı -->
   <div class="modal-overlay" id="overlay" onclick="closeModal()"></div>
   <div class="modal" id="modal" style="display: none;">
     <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -229,17 +235,26 @@
     </div>
 
     <div id="restMessage" style="display: none; padding: 20px 0; text-align: center; color: var(--accent-c);">
-      Serbest gün seçildi. Bugün dinlenme vakti.
+      Serbest gün seçildi. Dinlenme günü.
     </div>
 
     <button class="btn-submit" onclick="saveData()">Kaydet</button>
   </div>
 
   <script>
+    // -----------------------------------------------------------------
+    // GOOGLE APPS SCRIPT URL'NİZİ AŞAĞIYA YAPIŞTIRIN:
+    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwgQOTmPVzN7F8fBqFISJlQs4FwrRjx7bFmJFS-yjglPUs69b-metMW7WeYGcRKxqOBHg/exec";
+    // -----------------------------------------------------------------
+
     let currentDate = new Date();
     let selectedDateKey = null;
     let currentPlan = 'A';
     const DB_KEY = 'workout_tracker_data';
+
+    function setStatus(text) {
+      document.getElementById('syncStatus').innerText = text;
+    }
 
     function getStorage() {
       return JSON.parse(localStorage.getItem(DB_KEY) || '{}');
@@ -256,7 +271,7 @@
       document.getElementById('monthYearTitle').innerText = `${months[month]} ${year}`;
 
       const firstDay = new Date(year, month, 1).getDay();
-      const startOffset = (firstDay === 0 ? 7 : firstDay) - 1; // Pazartesi başlangıçlı
+      const startOffset = (firstDay === 0 ? 7 : firstDay) - 1;
       const totalDays = new Date(year, month + 1, 0).getDate();
 
       const daysContainer = document.getElementById('calendarDays');
@@ -344,7 +359,6 @@
 
     function saveData() {
       const storage = getStorage();
-      
       let ex1 = [];
       let ex2 = [];
       if (currentPlan !== 'C') {
@@ -354,21 +368,35 @@
         }
       }
 
-      storage[selectedDateKey] = {
+      const payload = {
+        date: selectedDateKey,
         plan: currentPlan,
         ex1: ex1,
         ex2: ex2
       };
 
+      storage[selectedDateKey] = payload;
       saveStorage(storage);
       closeModal();
       renderCalendar();
+
+      // Google E-Tabloya Arka Planda Gönder
+      if (SCRIPT_URL && !SCRIPT_URL.includes("BURAYA_GOOGLE")) {
+        setStatus("Buluta kaydediliyor...");
+        fetch(SCRIPT_URL, {
+          method: 'POST',
+          body: JSON.stringify(payload),
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' }
+        })
+        .then(res => res.json())
+        .then(() => setStatus("Buluta eşitlendi ✓"))
+        .catch(() => setStatus("Yerel hafızaya kaydedildi (Bulut hatası)"));
+      }
     }
 
     function calculateStats() {
       const storage = getStorage();
       const now = new Date();
-      
       let thisWeekSum = 0;
       let prevWeekSum = 0;
 
@@ -377,7 +405,7 @@
         d.setDate(now.getDate() - i);
         const key = d.toISOString().split('T')[0];
         if (storage[key] && storage[key].plan !== 'C') {
-          thisWeekSum += storage[key].ex1.reduce((a,b)=>a+b, 0) + storage[key].ex2.reduce((a,b)=>a+b, 0);
+          thisWeekSum += (storage[key].ex1 || []).reduce((a,b)=>a+b, 0) + (storage[key].ex2 || []).reduce((a,b)=>a+b, 0);
         }
       }
 
@@ -386,25 +414,47 @@
         d.setDate(now.getDate() - i);
         const key = d.toISOString().split('T')[0];
         if (storage[key] && storage[key].plan !== 'C') {
-          prevWeekSum += storage[key].ex1.reduce((a,b)=>a+b, 0) + storage[key].ex2.reduce((a,b)=>a+b, 0);
+          prevWeekSum += (storage[key].ex1 || []).reduce((a,b)=>a+b, 0) + (storage[key].ex2 || []).reduce((a,b)=>a+b, 0);
         }
       }
 
       document.getElementById('thisWeekReps').innerText = `${thisWeekSum} tekrar`;
-      
       const trendEl = document.getElementById('weekTrend');
       if (prevWeekSum === 0) {
         trendEl.innerText = thisWeekSum > 0 ? '+%100' : '0%';
         trendEl.style.color = 'var(--text)';
       } else {
         const diff = ((thisWeekSum - prevWeekSum) / prevWeekSum) * 100;
-        const sign = diff >= 0 ? '+' : '';
-        trendEl.innerText = `${sign}%${diff.toFixed(0)}`;
+        trendEl.innerText = `${diff >= 0 ? '+' : ''}%${diff.toFixed(0)}`;
         trendEl.style.color = diff >= 0 ? 'var(--accent-a)' : '#ef4444';
       }
     }
 
+    // Açılışta Google E-Tablodan Verileri Çek
+    function syncFromCloud() {
+      if (!SCRIPT_URL || SCRIPT_URL.includes("BURAYA_GOOGLE")) {
+        setStatus("Yerel modda çalışıyor (Bağlantı girilmedi)");
+        return;
+      }
+      setStatus("Bulut verileri kontrol ediliyor...");
+      fetch(SCRIPT_URL)
+        .then(res => res.json())
+        .then(cloudData => {
+          if (cloudData && typeof cloudData === 'object') {
+            const current = getStorage();
+            const merged = { ...current, ...cloudData };
+            saveStorage(merged);
+            renderCalendar();
+            setStatus("Bulutla eşitlendi ✓");
+          }
+        })
+        .catch(() => {
+          setStatus("Çevrimdışı (Yerel kayıtlar gösteriliyor)");
+        });
+    }
+
     renderCalendar();
+    syncFromCloud();
   </script>
 </body>
 </html>
