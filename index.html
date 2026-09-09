@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <title>Antrenman Takibi</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card-bg: #1e293b;
+      --border: #334155;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --accent-a: #10b981;
+      --accent-b: #3b82f6;
+      --accent-c: #f59e0b;
+    }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    body {
+      margin: 0;
+      padding: 16px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+    .header h1 { font-size: 1.25rem; margin: 0; }
+    .btn-nav {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-size: 0.9rem;
+    }
+    .stats-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px;
+      margin-bottom: 16px;
+      font-size: 0.85rem;
+    }
+    .stats-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .stat-item { background: rgba(255,255,255,0.03); padding: 8px; border-radius: 8px; }
+    .stat-val { font-size: 1.1rem; font-weight: bold; margin-top: 2px; }
+    .calendar {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px;
+    }
+    .weekdays, .days {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 4px;
+      text-align: center;
+    }
+    .weekdays div { font-size: 0.75rem; color: var(--muted); padding: 4px 0; }
+    .day {
+      aspect-ratio: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      position: relative;
+      cursor: pointer;
+    }
+    .day.empty { visibility: hidden; }
+    .day.today { border: 1px solid var(--text); font-weight: bold; }
+    .badge-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      margin-top: 2px;
+    }
+    .dot-A { background: var(--accent-a); }
+    .dot-B { background: var(--accent-b); }
+    .dot-C { background: var(--accent-c); }
+
+    /* Modal / Bottom Sheet */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.6);
+      backdrop-filter: blur(2px);
+      z-index: 10;
+    }
+    .modal {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: var(--card-bg);
+      border-top-left-radius: 16px;
+      border-top-right-radius: 16px;
+      padding: 20px;
+      border-top: 1px solid var(--border);
+      z-index: 11;
+      max-height: 85vh;
+      overflow-y: auto;
+    }
+    .plan-selector {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin: 12px 0 16px;
+    }
+    .plan-btn {
+      padding: 10px 4px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text);
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 0.85rem;
+    }
+    .plan-btn.active.plan-a { background: var(--accent-a); border-color: var(--accent-a); color: #000; }
+    .plan-btn.active.plan-b { background: var(--accent-b); border-color: var(--accent-b); color: #fff; }
+    .plan-btn.active.plan-c { background: var(--accent-c); border-color: var(--accent-c); color: #000; }
+    
+    .set-inputs { margin-bottom: 12px; }
+    .set-inputs label { font-size: 0.85rem; color: var(--muted); display: block; margin-bottom: 6px; }
+    .input-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+    }
+    .input-grid input {
+      width: 100%;
+      height: 42px;
+      text-align: center;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 8px;
+      font-size: 16px; /* Prevents auto-zoom in Safari iOS */
+    }
+    .btn-submit {
+      width: 100%;
+      padding: 12px;
+      border-radius: 8px;
+      border: none;
+      background: #e2e8f0;
+      color: #0f172a;
+      font-weight: bold;
+      font-size: 1rem;
+      margin-top: 12px;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="stats-card">
+    <div style="font-weight: bold;">Haftalık İstatistik</div>
+    <div class="stats-grid">
+      <div class="stat-item">
+        <div style="color:var(--muted);">Bu Hafta Toplam</div>
+        <div class="stat-val" id="thisWeekReps">0 tekrar</div>
+      </div>
+      <div class="stat-item">
+        <div style="color:var(--muted);">Geçen Haftaya Göre</div>
+        <div class="stat-val" id="weekTrend">-%0</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="calendar">
+    <div class="header">
+      <button class="btn-nav" onclick="changeMonth(-1)">&lt;</button>
+      <h1 id="monthYearTitle"></h1>
+      <button class="btn-nav" onclick="changeMonth(1)">&gt;</button>
+    </div>
+    <div class="weekdays">
+      <div>Pzt</div><div>Sal</div><div>Çar</div><div>Per</div><div>Cum</div><div>Cmt</div><div>Paz</div>
+    </div>
+    <div class="days" id="calendarDays"></div>
+  </div>
+
+  <!-- Kayıt Modalı -->
+  <div class="modal-overlay" id="overlay" onclick="closeModal()"></div>
+  <div class="modal" id="modal" style="display: none;">
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+      <h3 id="modalDateTitle" style="margin: 0;"></h3>
+      <span onclick="closeModal()" style="font-size: 1.5rem; cursor: pointer;">&times;</span>
+    </div>
+
+    <div class="plan-selector">
+      <button class="plan-btn plan-a" onclick="selectPlan('A')">A Planı</button>
+      <button class="plan-btn plan-b" onclick="selectPlan('B')">B Planı</button>
+      <button class="plan-btn plan-c" onclick="selectPlan('C')">C (Dinlenme)</button>
+    </div>
+
+    <div id="exerciseForm">
+      <div class="set-inputs">
+        <label id="labelEx1">Hareket 1</label>
+        <div class="input-grid">
+          <input type="number" id="ex1_set1" placeholder="1. Set">
+          <input type="number" id="ex1_set2" placeholder="2. Set">
+          <input type="number" id="ex1_set3" placeholder="3. Set">
+          <input type="number" id="ex1_set4" placeholder="4. Set">
+        </div>
+      </div>
+
+      <div class="set-inputs">
+        <label id="labelEx2">Hareket 2</label>
+        <div class="input-grid">
+          <input type="number" id="ex2_set1" placeholder="1. Set">
+          <input type="number" id="ex2_set2" placeholder="2. Set">
+          <input type="number" id="ex2_set3" placeholder="3. Set">
+          <input type="number" id="ex2_set4" placeholder="4. Set">
+        </div>
+      </div>
+    </div>
+
+    <div id="restMessage" style="display: none; padding: 20px 0; text-align: center; color: var(--accent-c);">
+      Serbest gün seçildi. Bugün dinlenme vakti.
+    </div>
+
+    <button class="btn-submit" onclick="saveData()">Kaydet</button>
+  </div>
+
+  <script>
+    let currentDate = new Date();
+    let selectedDateKey = null;
+    let currentPlan = 'A';
+    const DB_KEY = 'workout_tracker_data';
+
+    function getStorage() {
+      return JSON.parse(localStorage.getItem(DB_KEY) || '{}');
+    }
+
+    function saveStorage(data) {
+      localStorage.setItem(DB_KEY, JSON.stringify(data));
+    }
+
+    function renderCalendar() {
+      const year = currentDate.getFullYear();
+      const month = currentDate.getMonth();
+      const months = ["Ocak","Şubat","Mart","Nisan","Mayıs","Haziran","Temmuz","Ağustos","Eylül","Ekim","Kasım","Aralık"];
+      document.getElementById('monthYearTitle').innerText = `${months[month]} ${year}`;
+
+      const firstDay = new Date(year, month, 1).getDay();
+      const startOffset = (firstDay === 0 ? 7 : firstDay) - 1; // Pazartesi başlangıçlı
+      const totalDays = new Date(year, month + 1, 0).getDate();
+
+      const daysContainer = document.getElementById('calendarDays');
+      daysContainer.innerHTML = '';
+
+      for (let i = 0; i < startOffset; i++) {
+        daysContainer.innerHTML += `<div class="day empty"></div>`;
+      }
+
+      const storage = getStorage();
+      const today = new Date();
+
+      for (let d = 1; d <= totalDays; d++) {
+        const dateKey = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        const isToday = today.getFullYear() === year && today.getMonth() === month && today.getDate() === d;
+        const entry = storage[dateKey];
+
+        let dotHtml = '';
+        if (entry) {
+          dotHtml = `<div class="badge-dot dot-${entry.plan}"></div>`;
+        }
+
+        const dayEl = document.createElement('div');
+        dayEl.className = `day ${isToday ? 'today' : ''}`;
+        dayEl.innerHTML = `<span>${d}</span>${dotHtml}`;
+        dayEl.onclick = () => openModal(dateKey);
+        daysContainer.appendChild(dayEl);
+      }
+
+      calculateStats();
+    }
+
+    function changeMonth(delta) {
+      currentDate.setMonth(currentDate.getMonth() + delta);
+      renderCalendar();
+    }
+
+    function openModal(dateKey) {
+      selectedDateKey = dateKey;
+      document.getElementById('modalDateTitle').innerText = dateKey;
+      const storage = getStorage();
+      const data = storage[dateKey] || { plan: 'A', ex1: ['', '', '', ''], ex2: ['', '', '', ''] };
+      
+      selectPlan(data.plan);
+      
+      for(let i = 1; i <= 4; i++) {
+        document.getElementById(`ex1_set${i}`).value = data.ex1 ? data.ex1[i-1] || '' : '';
+        document.getElementById(`ex2_set${i}`).value = data.ex2 ? data.ex2[i-1] || '' : '';
+      }
+
+      document.getElementById('overlay').style.display = 'block';
+      document.getElementById('modal').style.display = 'block';
+    }
+
+    function closeModal() {
+      document.getElementById('overlay').style.display = 'none';
+      document.getElementById('modal').style.display = 'none';
+    }
+
+    function selectPlan(plan) {
+      currentPlan = plan;
+      document.querySelectorAll('.plan-btn').forEach(b => b.classList.remove('active'));
+      
+      const form = document.getElementById('exerciseForm');
+      const restMsg = document.getElementById('restMessage');
+
+      if (plan === 'A') {
+        document.querySelector('.plan-btn.plan-a').classList.add('active');
+        document.getElementById('labelEx1').innerText = 'Şınav (4 Set Tekrarı)';
+        document.getElementById('labelEx2').innerText = 'Mekik (4 Set Tekrarı)';
+        form.style.display = 'block';
+        restMsg.style.display = 'none';
+      } else if (plan === 'B') {
+        document.querySelector('.plan-btn.plan-b').classList.add('active');
+        document.getElementById('labelEx1').innerText = 'Barfiks (4 Set Tekrarı)';
+        document.getElementById('labelEx2').innerText = 'Squat (4 Set Tekrarı)';
+        form.style.display = 'block';
+        restMsg.style.display = 'none';
+      } else {
+        document.querySelector('.plan-btn.plan-c').classList.add('active');
+        form.style.display = 'none';
+        restMsg.style.display = 'block';
+      }
+    }
+
+    function saveData() {
+      const storage = getStorage();
+      
+      let ex1 = [];
+      let ex2 = [];
+      if (currentPlan !== 'C') {
+        for(let i = 1; i <= 4; i++) {
+          ex1.push(Number(document.getElementById(`ex1_set${i}`).value) || 0);
+          ex2.push(Number(document.getElementById(`ex2_set${i}`).value) || 0);
+        }
+      }
+
+      storage[selectedDateKey] = {
+        plan: currentPlan,
+        ex1: ex1,
+        ex2: ex2
+      };
+
+      saveStorage(storage);
+      closeModal();
+      renderCalendar();
+    }
+
+    function calculateStats() {
+      const storage = getStorage();
+      const now = new Date();
+      
+      let thisWeekSum = 0;
+      let prevWeekSum = 0;
+
+      for (let i = 0; i < 7; i++) {
+        const d = new Date(now);
+        d.setDate(now.getDate() - i);
+        const key = d.toISOString().split('T')[0];
+        if (storage[key] && storage[key].plan !== 'C') {
+          thisWeekSum += storage[key].ex1.reduce((a,b)=>a+b, 0) + storage[key].ex2.reduce((a,b)=>a+b, 0);
+        }
+      }
+
+      for (let i = 7; i < 14; i++) {
+        const d = new Date(now);
+        d.setDate(now.getDate() - i);
+        const key = d.toISOString().split('T')[0];
+        if (storage[key] && storage[key].plan !== 'C') {
+          prevWeekSum += storage[key].ex1.reduce((a,b)=>a+b, 0) + storage[key].ex2.reduce((a,b)=>a+b, 0);
+        }
+      }
+
+      document.getElementById('thisWeekReps').innerText = `${thisWeekSum} tekrar`;
+      
+      const trendEl = document.getElementById('weekTrend');
+      if (prevWeekSum === 0) {
+        trendEl.innerText = thisWeekSum > 0 ? '+%100' : '0%';
+        trendEl.style.color = 'var(--text)';
+      } else {
+        const diff = ((thisWeekSum - prevWeekSum) / prevWeekSum) * 100;
+        const sign = diff >= 0 ? '+' : '';
+        trendEl.innerText = `${sign}%${diff.toFixed(0)}`;
+        trendEl.style.color = diff >= 0 ? 'var(--accent-a)' : '#ef4444';
+      }
+    }
+
+    renderCalendar();
+  </script>
+</body>
+</html>
